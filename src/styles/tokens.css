@@ -1,0 +1,27 @@
+/* Safety-signage palette. Colour carries meaning: green = way out, red = danger, amber = caution.
+   The live values are written by src/theme.ts (so settings can swap them); these are the first-paint defaults. */
+:root {
+  --paper: #f3f4f6; /* ground */
+  --paper-edge: #e3e6eb; /* panels */
+  --ink: #0b1220; /* primary text, geometry, bars */
+  --ink-soft: #2b3646; /* secondary text */
+  --ink-faint: #5b6675; /* tertiary / disabled */
+  --rule: #b4bbc6; /* hairlines */
+  --vermillion: #d01030; /* danger / fire */
+  --brass: #b35c00; /* caution, selection */
+  --olive: #0b7a3b; /* exit / pass */
+  --signal: #ffc20e; /* hazard-tape yellow */
+  --on-dark: #ffffff;
+
+  --font-serif: 'IBM Plex Sans', system-ui, sans-serif; /* V2: headings are bold sans, not serif */
+  --font-sans: 'IBM Plex Sans', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+
+  --text-scale: 1;
+  --radius: 3px;
+  --hairline: 1px solid var(--rule);
+  --heavy: 2px solid var(--ink);
+  --gap: 12px;
+  --toolbar-w: 78px;
+  --safe-b: env(safe-area-inset-bottom, 0px);
+}

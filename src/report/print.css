@@ -1,0 +1,33 @@
+/* Report layout: on screen it is a paper sheet; in print it is the page. */
+.report-sheet {
+  background: #fff;
+  color: var(--ink);
+  border: var(--hairline);
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 28px 32px;
+}
+.report-sheet h1 { font-size: 1.6rem; margin-bottom: 2px; }
+.report-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; border-bottom: 1px solid var(--ink); padding-bottom: 10px; margin-bottom: 14px; }
+.report-sheet h2 { break-after: avoid; font-size: 1.05rem; margin-top: 18px; border-bottom: var(--hairline); padding-bottom: 3px; }
+.report-finding { break-inside: avoid; margin-bottom: 10px; }
+.report-finding .n { font-family: var(--font-mono); color: var(--brass); margin-right: 6px; }
+.report-finding .sev { font-variant-caps: all-small-caps; letter-spacing: 0.08em; color: var(--ink-soft); }
+.report-finding.critical .sev { color: var(--vermillion); }
+.sign { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; margin-top: 28px; break-inside: avoid; }
+.sign .line { border-bottom: 1px solid var(--ink); min-height: 30px; padding-top: 6px; font-family: var(--font-serif); }
+.report-foot { margin-top: 24px; padding-top: 8px; border-top: var(--hairline); font-size: 0.78rem; color: var(--ink-soft); font-family: var(--font-mono); }
+.report-map .canvas-wrap { height: 300px; flex: none; border: var(--hairline); }
+.report-bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding: 8px 14px; border-bottom: var(--hairline); background: var(--paper-edge); }
+.report-bar .field { margin: 0; flex-direction: row; align-items: center; gap: 6px; }
+
+@media print {
+  @page { size: A4; margin: 14mm; }
+  html, body, #root { height: auto !important; overflow: visible !important; background: #fff !important; }
+  .screen { height: auto !important; display: block !important; }
+  .no-print, .topbar, .report-bar { display: none !important; }
+  .page { overflow: visible !important; max-width: none !important; padding: 0 !important; }
+  .report-sheet { border: 0; padding: 0; max-width: none; }
+  .stamp { opacity: 1; }
+  a { text-decoration: none; }
+}
