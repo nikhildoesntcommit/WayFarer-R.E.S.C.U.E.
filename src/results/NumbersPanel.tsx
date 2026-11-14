@@ -55,7 +55,7 @@ export function NumbersPanel({ plan, result, findings }: { plan: Plan | null; re
             <td className="n"><Num v={per(result.evacuated)} digits={isMap ? 0 : 1} /></td>
           </tr>
           <tr>
-            <th scope="row">Casualties</th>
+            <th scope="row">{isMap ? 'Caught on the way' : 'Casualties'}</th>
             <td className={`n ${result.casualties > 0 ? 'danger' : ''}`}><Num v={per(result.casualties)} digits={isMap ? 0 : 1} /></td>
           </tr>
           <tr>

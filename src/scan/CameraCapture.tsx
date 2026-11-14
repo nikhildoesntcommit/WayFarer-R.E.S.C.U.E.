@@ -5,7 +5,7 @@ import { useApp } from '../store';
 import type { WorldPoint } from '../types';
 
 import {
-  AimError, computeCornerPosition, DEFAULT_PHONE_HEIGHT_M, DUPLICATE_CORNER_M, nearestCornerDistance, tapToVideoPixels,
+  aimUncertaintyM, AimError, computeCornerPosition, DEFAULT_PHONE_HEIGHT_M, DUPLICATE_CORNER_M, MAX_AIM_SPREAD_DEG, nearestCornerDistance, PITCH_NOISE_DEG,
 } from './geometry';
 import { scanArea } from './planBuilder';
 import { useSensors } from './sensors';
@@ -20,13 +20,14 @@ export function CameraCapture() {
   const video = useRef<HTMLVideoElement>(null);
   const mini = useRef<HTMLCanvasElement>(null);
   const stream = useRef<MediaStream | null>(null);
-  const { orient, motion, requestMotion, live: orientLive, still, absolute } = useSensors();
+  const { orient, motion, requestMotion, sampleAim, live: orientLive, absolute } = useSensors();
 
   const [cam, setCam] = useState<CamState>('starting');
   const [camMsg, setCamMsg] = useState('');
   const [corners, setCorners] = useState<WorldPoint[]>([]);
   const [heightStr, setHeightStr] = useState(String(DEFAULT_PHONE_HEIGHT_M));
-  const [preview, setPreview] = useState<{ d: number; ok: boolean; msg: string }>({ d: NaN, ok: false, msg: 'Aim below the horizon' });
+  const [preview, setPreview] = useState<{ d: number; err: number; ok: boolean; msg: string }>({ d: NaN, err: NaN, ok: false, msg: 'Aim below the horizon' });
+  const [errs, setErrs] = useState<number[]>([]);
   const [warn, setWarn] = useState('');
   const [confirm, setConfirm] = useState<WorldPoint | null>(null);
   const [manual, setManual] = useState(false);
@@ -85,17 +86,18 @@ export function CameraCapture() {
       if (!v || !v.videoWidth) return;
       const o = orient.current;
       if (!o.live) {
-        setPreview({ d: NaN, ok: false, msg: 'Waiting for the motion sensors…' });
+        setPreview({ d: NaN, err: NaN, ok: false, msg: 'Waiting for the motion sensors…' });
         return;
       }
       try {
+        const h = heightOk ? height : DEFAULT_PHONE_HEIGHT_M;
         const p = computeCornerPosition({
-          beta: o.beta, headingDeg: o.heading, phoneHeightM: heightOk ? height : DEFAULT_PHONE_HEIGHT_M,
+          beta: o.beta, headingDeg: o.heading, phoneHeightM: h,
           videoWidth: v.videoWidth, videoHeight: v.videoHeight, tapX: v.videoWidth / 2, tapY: v.videoHeight / 2,
         });
-        setPreview({ d: p.distanceM, ok: true, msg: '' });
+        setPreview({ d: p.distanceM, err: aimUncertaintyM(p.distanceM, h, PITCH_NOISE_DEG), ok: true, msg: '' });
       } catch (e) {
-        setPreview({ d: NaN, ok: false, msg: e instanceof AimError ? e.message : 'Cannot measure' });
+        setPreview({ d: NaN, err: NaN, ok: false, msg: e instanceof AimError ? e.message : 'Cannot measure' });
       }
     }, 200);
     return () => window.clearInterval(id);
@@ -145,38 +147,43 @@ export function CameraCapture() {
     ctx.strokeRect(me.x - 4, me.y - 4, 8, 8);
   }, [corners]);
 
-  const addCorner = (p: WorldPoint, force = false) => {
+  const addCorner = (p: WorldPoint, force = false, err = 0) => {
     if (!force && corners.length > 0 && nearestCornerDistance(corners, p) < DUPLICATE_CORNER_M) {
       setConfirm(p);
       return;
     }
     setCorners((c) => [...c, p]);
+    setErrs((e) => [...e, err]);
   };
 
-  const onTap = (e: React.PointerEvent<HTMLDivElement>) => {
+  /**
+   * A tap places the point under the CROSSHAIR (the centre of the picture), not under the finger. That makes the result
+   * independent of the lens: wide, ultra-wide or zoomed cameras all give the same answer, because only the phone's own
+   * pitch and compass heading are used. The aim is the median of the last 0.4 s, so hand tremor averages out.
+   */
+  const onTap = () => {
     setWarn('');
     if (cam !== 'live' || !video.current) return;
     if (!heightOk) {
       setWarn('Enter your phone height between 0.5 and 2.5 m first.');
       return;
     }
-    if (!still) {
-      setWarn('Hold still, then tap again.');
-      return;
-    }
-    const o = orient.current;
-    if (!o.live) {
+    const aim = sampleAim();
+    if (!aim) {
       setWarn('The motion sensors are not reporting. Enable them, or use manual placement.');
       return;
     }
+    if (aim.spreadDeg > MAX_AIM_SPREAD_DEG) {
+      setWarn('The crosshair was moving. Steady it on the corner for a moment and tap again.');
+      return;
+    }
     const v = video.current;
-    const r = e.currentTarget.getBoundingClientRect();
-    const px = tapToVideoPixels(e.clientX - r.left, e.clientY - r.top, r.width, r.height, v.videoWidth, v.videoHeight);
     try {
       const p = computeCornerPosition({
-        beta: o.beta, headingDeg: o.heading, phoneHeightM: height, videoWidth: v.videoWidth, videoHeight: v.videoHeight, tapX: px.x, tapY: px.y,
+        beta: aim.beta, headingDeg: aim.heading, phoneHeightM: height, videoWidth: v.videoWidth, videoHeight: v.videoHeight,
+        tapX: v.videoWidth / 2, tapY: v.videoHeight / 2,
       });
-      addCorner({ x: p.x, y: p.y });
+      addCorner({ x: p.x, y: p.y }, false, aimUncertaintyM(p.distanceM, height, Math.hypot(PITCH_NOISE_DEG, aim.spreadDeg)));
     } catch (err) {
       setWarn(err instanceof AimError ? err.message : 'Could not place that corner.');
     }
@@ -230,14 +237,13 @@ export function CameraCapture() {
           <canvas ref={mini} width={120} height={120} className="scan-mini" aria-label="Plan so far" onPointerUp={manual ? onManualTap : undefined} />
         </div>
         <div className="scan-readout num" aria-live="polite">
-          {preview.ok ? <>{preview.d.toFixed(2)}<span className="unit">m</span> to the point under the crosshair</> : preview.msg}
+          {preview.ok ? <>{preview.d.toFixed(2)}<span className="unit">m</span> ± {preview.err.toFixed(2)} to the crosshair</> : preview.msg}
         </div>
       </div>
       <div className="scan-bottom" onPointerUp={(e) => e.stopPropagation()}>
-        <p className="scan-help">Stand at a corner. Aim the crosshair where the wall meets the floor. Tap to place a corner.</p>
+        <p className="scan-help">Stand in one spot where you can see every corner. Aim the <strong>crosshair</strong> where the wall meets the floor and tap anywhere. Works with any camera. {errs.length > 0 ? <>Worst corner so far: about ± {Math.max(...errs).toFixed(2)} m (the scale is fixed on the next screen).</> : null}</p>
         {warn ? <p className="danger" role="alert" style={{ margin: 0 }}>{warn}</p> : null}
-        {!still && cam === 'live' ? <p className="warn-text" style={{ margin: 0 }}>Hold still…</p> : null}
-        {motion === 'needs-gesture' ? (
+                {motion === 'needs-gesture' ? (
           <button className="btn" onClick={() => void requestMotion()}>Enable motion sensors</button>
         ) : null}
         {cam === 'live' && motion === 'granted' && !orientLive ? <p className="muted" style={{ margin: 0 }}>Waiting for motion sensor readings…</p> : null}
@@ -251,7 +257,7 @@ export function CameraCapture() {
         {manual ? <p className="muted" style={{ margin: 0 }}>Tap the corners on the small plan (top right). You will set the real scale on the next screen.</p> : null}
         <div className="scan-actions">
           <span className="num">{corners.length}<span className="unit">corners</span>{corners.length >= 3 ? <> · {scanArea(corners).toFixed(1)}<span className="unit">m²</span></> : null}</span>
-          <button className="btn small" disabled={corners.length === 0} onClick={() => setCorners((c) => c.slice(0, -1))}>Undo last corner</button>
+          <button className="btn small" disabled={corners.length === 0} onClick={() => { setCorners((c) => c.slice(0, -1)); setErrs((e) => e.slice(0, -1)); }}>Undo last corner</button>
           <button className="btn small primary" disabled={corners.length < 3} onClick={done} data-testid="scan-done">Done</button>
         </div>
       </div>

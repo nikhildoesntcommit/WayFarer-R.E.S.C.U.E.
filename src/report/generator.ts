@@ -2,7 +2,7 @@ import { peopleSources } from '../utils/sources';
 import { exitLabels } from '../ai/rules';
 import { overallStatus, type Status } from '../ai/findings';
 import { fmtDuration } from '../ai/templates';
-import { APP } from '../constants';
+import { APP, MAP } from '../constants';
 import type { Finding, MapScenario, Plan, SimulationResult } from '../types';
 
 export interface ReportRow {
@@ -27,7 +27,7 @@ function describeScenario(s: MapScenario): string {
   switch (s.disasterKind) {
     case 'earthquake': return `Earthquake M${s.magnitude?.toFixed(1)} at ${where}`;
     case 'flood': return `Flood after ${Math.round(s.rainfallMm ?? 0)} mm of rain in 24 h, near ${where}`;
-    case 'cyclone': return `Cyclone category ${s.category} making landfall near ${where}${s.headingDeg !== undefined ? `, moving ${Math.round(s.headingDeg)}°` : ''}, ${s.leadHours ?? 12} h warning`;
+    case 'cyclone': return `Cyclone category ${s.category} making landfall near ${where}${s.headingDeg !== undefined ? `, moving ${Math.round(s.headingDeg)}°` : ''}, ${s.leadHours ?? MAP.cyclone.leadHoursDefault} h warning`;
   }
 }
 
@@ -52,7 +52,7 @@ export function buildReport(args: {
     { label: 'Mean ± standard deviation', value: `${T(result.mean)} ± ${T(result.stdDev)}` },
     { label: isMap ? 'Population at risk' : 'People modelled', value: total.toLocaleString('en-IN') },
     { label: 'Evacuated (mean per trial)', value: (result.evacuated / result.runs).toFixed(isMap ? 0 : 1) },
-    { label: 'Casualties (mean per trial)', value: (result.casualties / result.runs).toFixed(isMap ? 0 : 1) },
+    { label: isMap ? 'Caught by the hazard on the way (mean per trial)' : 'Casualties (mean per trial)', value: (result.casualties / result.runs).toFixed(isMap ? 0 : 1) },
     { label: 'Not out at the time cap (mean per trial)', value: (result.remaining / result.runs).toFixed(isMap ? 0 : 1) },
     { label: 'Conservation check', value: result.conservationPass ? 'passed' : 'FAILED' },
   ];

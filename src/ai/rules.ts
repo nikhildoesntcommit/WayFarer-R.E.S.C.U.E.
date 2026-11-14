@@ -1,4 +1,5 @@
-import { BSI, DOOR, FINDINGS } from '../constants';
+import { BSI, DOOR, FINDINGS, MAP } from '../constants';
+import { hav } from '../engine/disaster/geo';
 import { isFinalExitDoor } from '../utils/exits';
 import { peopleSources, totalPeople } from '../utils/sources';
 import { doorCapacity } from '../engine/doors';
@@ -222,7 +223,10 @@ function mapFindings(result: SimulationResult, scenario: MapScenario | null): Fi
     .slice(0, 5);
   const spare = ms.shelterLoads.filter((s) => s.load < s.capacity).sort((a, b) => (b.capacity - b.load) - (a.capacity - a.load));
   for (const s of over) {
-    const alt = spare.find((x) => x.shelterId !== s.shelterId);
+    // the alternative must be genuinely nearby (within the alternate range), nearest first
+    const alt = spare
+      .filter((x) => x.shelterId !== s.shelterId && x.lat !== undefined && s.lat !== undefined && hav(x.lat, x.lon!, s.lat, s.lon!) <= MAP.evac.alternateRangeKm)
+      .sort((a, b) => hav(a.lat!, a.lon!, s.lat!, s.lon!) - hav(b.lat!, b.lon!, s.lat!, s.lon!))[0];
     const excess = s.load - s.capacity;
     const evidence = { shelterId: s.shelterId, shelterName: s.name, load: s.load, capacity: s.capacity, ratio: s.load / s.capacity, excess, alternateId: alt?.shelterId, alternateName: alt?.name };
     out.push({
@@ -232,7 +236,7 @@ function mapFindings(result: SimulationResult, scenario: MapScenario | null): Fi
   }
   if (over.length > 0) {
     const unused = ms.shelterLoads
-      .filter((s) => s.capacity > 0 && s.load / s.capacity < FINDINGS.shelterUnderusedRatio)
+      .filter((s) => s.capacity > 0 && s.load / s.capacity < FINDINGS.shelterUnderusedRatio && over.some((o) => o.lat !== undefined && s.lat !== undefined && hav(o.lat, o.lon!, s.lat, s.lon!) <= MAP.evac.alternateRangeKm))
       .sort((a, b) => b.capacity - b.load - (a.capacity - a.load))
       .slice(0, 3);
     for (const s of unused) {

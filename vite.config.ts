@@ -3,7 +3,9 @@ import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
 // VITE_BASE=/repo-name/ for GitHub Pages project sites; defaults to '/' (root hosting, local preview).
-const BASE = (process.env.VITE_BASE ?? '/').replace(/\/*$/, '/');
+// Inside GitHub Actions the repository name is always known, so a project site works even if VITE_BASE was not passed.
+const REPO = process.env.GITHUB_ACTIONS ? process.env.GITHUB_REPOSITORY?.split('/')[1] : undefined;
+const BASE = (process.env.VITE_BASE ?? (REPO ? `/${REPO}/` : '/')).replace(/\/*$/, '/');
 
 export default defineConfig({
   base: BASE,
@@ -33,7 +35,7 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,woff,woff2,png,svg,json,geojson,pmtiles}'],
         maximumFileSizeToCacheInBytes: 64 * 1024 * 1024,
         navigateFallback: BASE + 'index.html',
-        // WebLLM weights are fetched at runtime from a CDN and are optional; never precache them.
+        // the on-device language model runtime (~6 MB) is optional: never precache it; its weights come from a CDN on request
         globIgnores: ['**/node_modules/**', '**/webllm-*.js'],
         runtimeCaching: [
           {
@@ -50,7 +52,6 @@ export default defineConfig({
     chunkSizeWarningLimit: 7000,
     rollupOptions: {
       output: {
-        // keep the optional 6 MB on-device LLM runtime in its own chunk so it can be excluded from the offline precache
         manualChunks(id) {
           if (id.includes('@mlc-ai/web-llm')) return 'webllm';
           if (id.includes('maplibre-gl')) return 'maplibre';

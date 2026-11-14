@@ -1,10 +1,10 @@
-import { BSI, DENSITY, DOOR, PRE_MOVEMENT, ROUTE, SIM, WALKING_SPEED, WEIDMANN } from '../constants';
+import { BSI, DENSITY, FIRE, GROUPS, DOOR, PRE_MOVEMENT, ROUTE, SIM, WALKING_SPEED, WEIDMANN } from '../constants';
 import type { Cell, GroupMix, Plan } from '../types';
 import { pointInPolygon, polygonCentroid } from '../utils/geo';
 import type { SeededRandom } from '../utils/seeds';
 import { doorCapacity } from './doors';
 import { cellCentre, cellOfPoint, rasterize, type Grid } from './grid';
-import { buildHazardRuntime, epochIndexAt, inHazard, type HazardOptions, type HazardRuntime } from './hazards';
+import { buildHazardRuntime, epochIndexAt, inHazard, smokeDoseRate, type HazardOptions, type HazardRuntime } from './hazards';
 import { weidmannSpeed } from './speed';
 import { peopleSources } from '../utils/sources';
 
@@ -89,6 +89,8 @@ export interface SimOptions {
   trace?: boolean;
   /** Test hook: no pre-movement delay, everyone starts at t = alarm time. */
   noPreMovement?: boolean;
+  /** Test hook: treat every person as an individual (no companion groups). */
+  noGroups?: boolean;
 }
 
 export function buildSimContext(plan: Plan, hazardOpts: HazardOptions = {}): SimContext {
@@ -197,12 +199,48 @@ function fieldAt(T: Float32Array, grid: Grid, idx: number): number {
   return best;
 }
 
+/**
+ * Real crowds are not independent individuals: about 70 % of pedestrians move in groups, mostly pairs (Moussaïd et al. 2010).
+ * Companions start together, wait for the slowest to be ready, walk at the pace of the slowest and leave by the same exit
+ * (families, friends, a teacher with pupils). Draws are made in a fixed order so that paired runs stay paired.
+ */
+function formGroups(out: AgentSampling[], start: number, rng: SeededRandom, noPre: boolean): void {
+  let i = start;
+  while (i < out.length) {
+    const u = rng.next();
+    let size = u < GROUPS.size1 ? 1 : u < GROUPS.size1 + GROUPS.size2 ? 2 : u < GROUPS.size1 + GROUPS.size2 + GROUPS.size3 ? 3 : 4;
+    size = Math.min(size, out.length - i);
+    if (size > 1) {
+      const lead = out[i]!;
+      let slowest = lead.freeSpeed;
+      let latest = lead.preMovementDelay;
+      for (let k = 1; k < size; k++) {
+        slowest = Math.min(slowest, out[i + k]!.freeSpeed);
+        latest = Math.max(latest, out[i + k]!.preMovementDelay);
+      }
+      for (let k = 0; k < size; k++) {
+        const a = out[i + k]!;
+        a.freeSpeed = slowest;
+        a.preMovementDelay = noPre ? a.preMovementDelay : latest + GROUPS.gatherS;
+        if (k > 0) {
+          a.startCell = lead.startCell;
+          a.x = lead.x + (rng.next() - 0.5) * GROUPS.spreadM;
+          a.y = lead.y + (rng.next() - 0.5) * GROUPS.spreadM;
+          a.exitChoice = lead.exitChoice; a.exitIdx = lead.exitIdx; a.perceive = lead.perceive; a.replans = lead.replans;
+        }
+      }
+    }
+    i += size;
+  }
+}
+
 export function sampleAgents(ctx: SimContext, rng: SeededRandom, opts: SimOptions = {}): AgentSampling[] {
   const { grid, plan } = ctx;
   const T0 = ctx.hazards.epochs[0]!.T;
   const m = grid.metresPerCell;
   const out: AgentSampling[] = [];
   ctx.clusters.forEach((cl, ci) => {
+    const clusterStart = out.length;
     for (let k = 0; k < cl.people; k++) {
       if (cl.cells.length === 0) {
         out.push({ clusterId: cl.id, clusterIdx: ci, startCell: { row: 0, col: 0 }, x: 0, y: 0, freeSpeed: WEIDMANN.v0, preMovementDelay: 0, exitChoice: '', exitIdx: -1, perceive: [], replans: false });
@@ -247,6 +285,7 @@ export function sampleAgents(ctx: SimContext, rng: SeededRandom, opts: SimOption
         exitChoice: exitIdx >= 0 ? ctx.exitIds[exitIdx]! : '', exitIdx, perceive, replans,
       });
     }
+    if (cl.cells.length > 0 && opts.noGroups !== true) formGroups(out, clusterStart, rng, opts.noPreMovement === true);
   });
   return out;
 }
@@ -309,6 +348,7 @@ export function simulateRun(ctx: SimContext, agents: AgentSampling[], opts: SimO
   const crit = new Float32Array(rows * cols);
   const critStamp = new Int32Array(rows * cols).fill(-1);
   const casualtyCells: { x: number; y: number }[] = [];
+  const dose = new Float32Array(N);
   const evacuationTimes: number[] = [];
   let casualties = 0;
   let lastCompletion = 0;
@@ -422,7 +462,17 @@ export function simulateRun(ctx: SimContext, agents: AgentSampling[], opts: SimO
       for (let i = 0; i < N; i++) {
         const s = status[i]!;
         if (s === OUT || s === DEAD) continue;
-        if (inHazard(hazards, x[i]!, y[i]!, cell[i]!, t)) {
+        let dead = inHazard(hazards, x[i]!, y[i]!, cell[i]!, t);
+        if (!dead && hazards.fires.length > 0) {
+          // smoke: slows people, makes those still waiting leave, and harms by exposure time
+          const rate = smokeDoseRate(hazards, cell[i]!, t);
+          if (rate > 0) {
+            dose[i] = dose[i]! + rate * dt;
+            if (dose[i]! >= 1) dead = true;
+            else if (s === PENDING && startT[i]! > t + FIRE.cueDelayS) startT[i] = t + FIRE.cueDelayS;
+          }
+        }
+        if (dead) {
           if (s === PENDING || s === MOVING || s === QUEUED) active--;
           status[i] = DEAD;
           casualties++;
@@ -529,7 +579,8 @@ export function simulateRun(ctx: SimContext, agents: AgentSampling[], opts: SimO
         queues[e]!.push(i);
         continue;
       }
-      const speed = Math.max(SIM.minSpeedMS, weidmannSpeed(nMoving / area) * (free[i]! / WEIDMANN.v0));
+      const inSmoke = hazards.fires.length > 0 && smokeDoseRate(hazards, ci, t) > 0;
+      const speed = Math.max(SIM.minSpeedMS, weidmannSpeed(nMoving / area) * (free[i]! / WEIDMANN.v0) * (inSmoke ? FIRE.smokeSpeedFactor : 1));
       let remaining = speed * dt;
       const T = epoch.T[e]!;
       for (let iter = 0; iter < 4 && remaining > 1e-9; iter++) {
@@ -618,6 +669,24 @@ export function simulateRun(ctx: SimContext, agents: AgentSampling[], opts: SimO
     if (trace && step % traceEvery === 0) snapshot(t);
   }
   snapshot(step * dt);
+
+  // People who could not get out stay where they are while the smoke keeps thickening; follow their exposure to the end (1 s steps).
+  if (hazards.fires.length > 0) {
+    const trapped: number[] = [];
+    for (let i = 0; i < N; i++) if (status[i] === STUCK) trapped.push(i);
+    for (let tt = step * dt; trapped.length > 0 && tt < SIM.maxTimeS; tt += 1) {
+      for (let k = trapped.length - 1; k >= 0; k--) {
+        const i = trapped[k]!;
+        dose[i] = dose[i]! + smokeDoseRate(hazards, cell[i]!, tt);
+        if (dose[i]! >= 1 || inHazard(hazards, x[i]!, y[i]!, cell[i]!, tt)) {
+          status[i] = DEAD;
+          casualties++;
+          casualtyCells.push({ x: x[i]!, y: y[i]! });
+          trapped.splice(k, 1);
+        }
+      }
+    }
+  }
 
   const evacuated = evacuationTimes.length;
   const exitLoads = new Map<string, number>();

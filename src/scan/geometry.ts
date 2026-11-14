@@ -66,3 +66,50 @@ export function nearestCornerDistance(corners: WorldPoint[], p: WorldPoint): num
   for (const c of corners) d = Math.min(d, Math.hypot(c.x - p.x, c.y - p.y));
   return d;
 }
+
+/** One orientation reading, kept in a short history so a tap can use the median of the last few instead of one noisy sample. */
+export interface AimSample { t: number; beta: number; heading: number }
+
+export function median(v: number[]): number {
+  if (v.length === 0) return NaN;
+  const s = [...v].sort((a, b) => a - b);
+  const m = s.length >> 1;
+  return s.length % 2 ? s[m]! : (s[m - 1]! + s[m]!) / 2;
+}
+
+/** Signed difference a − b of two compass angles, in (−180, 180]. */
+export function angleDiffDeg(a: number, b: number): number {
+  return ((((a - b) % 360) + 540) % 360) - 180;
+}
+
+/**
+ * The aim at the moment of a tap: the median pitch and compass heading over the last `windowMs`, plus how much they wandered
+ * (a robust spread, in degrees). Replaces the old "hold perfectly still" gate: a tap is accepted when the aim was steady
+ * enough, and the spread is turned into an honest ± figure for the corner.
+ */
+export function aimFromSamples(samples: AimSample[], now: number, windowMs = 400): { beta: number; heading: number; spreadDeg: number; n: number } | null {
+  let w = samples.filter((s) => now - s.t <= windowMs);
+  // some browsers send an orientation event only when the value changes: a still phone then has no recent event, so the
+  // last known reading IS the steady aim
+  if (w.length === 0 && samples.length > 0) w = [samples[samples.length - 1]!];
+  if (w.length === 0) return null;
+  const beta = median(w.map((s) => s.beta));
+  const ref = median(w.map((s) => angleDiffDeg(s.heading, w[0]!.heading))) + w[0]!.heading;
+  const heading = ((ref % 360) + 360) % 360;
+  const dev = w.map((s) => Math.max(Math.abs(s.beta - beta), Math.abs(angleDiffDeg(s.heading, heading))));
+  return { beta, heading, spreadDeg: median(dev) * 1.4826 + Math.max(...dev) * 0.25, n: w.length };
+}
+
+/**
+ * Position error (metres) of a floor point found from the downward angle: d = h / tan(θ), so δd = (d² + h²)/h · δθ.
+ * `sigmaDeg` is the angle uncertainty (sensor noise and how steadily the phone was held); the height error is a pure scale
+ * error that the calibration step removes.
+ */
+export function aimUncertaintyM(distanceM: number, phoneHeightM: number, sigmaDeg: number): number {
+  return ((distanceM * distanceM + phoneHeightM * phoneHeightM) / phoneHeightM) * ((sigmaDeg * Math.PI) / 180);
+}
+
+/** Baseline sensor noise of phone pitch (degrees); consumer gyro/accelerometer fusion is good to about this. */
+export const PITCH_NOISE_DEG = 0.5;
+/** A tap is refused only when the aim wandered more than this (degrees) while it was taken. */
+export const MAX_AIM_SPREAD_DEG = 3;

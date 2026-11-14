@@ -5,7 +5,7 @@ import { loadIndiaData, type IndiaData } from './data/loader';
 import { buildOverlay } from './overlay';
 import { generateFindings } from '../ai/findings';
 import { Num } from '../components/Modal';
-import { MONTE_CARLO } from '../constants';
+import { MAP, MONTE_CARLO } from '../constants';
 import { analyseScenario } from '../engine/disaster/analyse';
 import { galeRadiusKm } from '../engine/disaster/cyclone';
 import { startMapSimulation } from '../engine/disaster/mapsim';
@@ -140,7 +140,7 @@ export function MapSimulateStage() {
 
   const shown = clock ?? durationS;
   const pct = progress ? Math.round((progress.completed / progress.total) * 100) : 0;
-  const landfallS = analysis?.scenario.disasterKind === 'cyclone' ? (analysis.scenario.leadHours ?? 12) * 3600 : null;
+  const landfallS = analysis?.scenario.disasterKind === 'cyclone' ? (analysis.scenario.leadHours ?? MAP.cyclone.leadHoursDefault) * 3600 : null;
 
   if (error) {
     return (

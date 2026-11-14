@@ -114,7 +114,7 @@ function treeFrom(input: MapSimInput, adj: Csr, travelS: Float64Array, usable: (
   return { dist, nextEdge };
 }
 
-interface Assignment { node: number; shelter: number; people: number }
+interface Assignment { node: number; shelter: number; people: number; /** true: no formal bed was left within range; these people travel to the nearest shelter but are not given a bed */ overflow?: boolean }
 interface Plan {
   assignments: Assignment[];
   /** per shelter: the edge each node takes towards it (null if no one is assigned to it) */
@@ -154,6 +154,7 @@ function planAssignments(input: MapSimInput, adj: Csr, travelS: Float64Array, re
     else unplaced.push(n);
   }
   const got = new Map<string, number>();
+  const gotOver = new Map<string, number>();
   while (heap.size > 0) {
     const { val: n } = heap.pop();
     const o = order.get(n)!;
@@ -186,7 +187,7 @@ function planAssignments(input: MapSimInput, adj: Csr, travelS: Float64Array, re
       for (let i = 0; i < S; i++) if (dist[i]![n]! < bd) { bd = dist[i]![n]!; s = i; }
       if (s < 0) continue;
     }
-    got.set(`${n}:${s}`, (got.get(`${n}:${s}`) ?? 0) + left);
+    gotOver.set(`${n}:${s}`, (gotOver.get(`${n}:${s}`) ?? 0) + left);
     overflow += left;
   }
   const assignments: Assignment[] = [];
@@ -195,6 +196,12 @@ function planAssignments(input: MapSimInput, adj: Csr, travelS: Float64Array, re
     if (people <= 0) continue;
     const [n, s] = key.split(':').map(Number) as [number, number];
     assignments.push({ node: n, shelter: s, people });
+    used.add(s);
+  }
+  for (const [key, people] of gotOver) {
+    if (people <= 0) continue;
+    const [n, s] = key.split(':').map(Number) as [number, number];
+    assignments.push({ node: n, shelter: s, people, overflow: true });
     used.add(s);
   }
   assignments.sort((a, b) => a.node - b.node || dist[a.shelter]![a.node]! - dist[b.shelter]![b.node]!);
@@ -446,22 +453,28 @@ export function runMapMonteCarlo(
   const exitLoads: Record<string, number> = {};
   const exitUtilisation: Record<string, number> = {};
   const exitQueueTimes: Record<string, number> = {};
-  const shelterLoads: { shelterId: string; name: string; load: number; capacity: number }[] = [];
+  const shelterLoads: { shelterId: string; name: string; load: number; capacity: number; lat?: number; lon?: number }[] = [];
   let plannedOverflow = 0;
   let totalCapacity = 0;
   if (formal.shelters.length > 0) {
     const sp = planAssignments(formal, adj, travelS, reachable, (e) => input.edgeBlockTimeS[e]! !== 0, E.maxShelterTravelS);
     const escaped = evacuated / (runs * totalPeople);
     const loadOf = new Float64Array(formal.shelters.length);
-    for (const a of sp.assignments) loadOf[a.shelter]! += a.people * escaped;
+    for (const a of sp.assignments) if (!a.overflow) loadOf[a.shelter]! += a.people * escaped; // overflow people get no bed: reported as unhoused, not piled onto one shelter
     formal.shelters.forEach((s, i) => {
       exitLoads[s.id] = loadOf[i]!;
       exitUtilisation[s.id] = loadOf[i]! / totalPeople;
       exitQueueTimes[s.id] = 0;
-      if (loadOf[i]! > 0) shelterLoads.push({ shelterId: s.id, name: s.name, load: loadOf[i]!, capacity: s.capacity });
+      if (loadOf[i]! > 0) shelterLoads.push({ shelterId: s.id, name: s.name, load: loadOf[i]!, capacity: s.capacity, lat: formal.nodeLat[s.node]!, lon: formal.nodeLon[s.node]! });
     });
     // idle shelters nearby so "redirect to ..." has candidates with spare capacity
-    for (const [i, s] of formal.shelters.entries()) if (loadOf[i]! === 0 && shelterLoads.length < 60) shelterLoads.push({ shelterId: s.id, name: s.name, load: 0, capacity: s.capacity });
+    const coord = (sh: { node: number }) => ({ lat: formal.nodeLat[sh.node]!, lon: formal.nodeLon[sh.node]! });
+    const loaded = formal.shelters.filter((_, i) => loadOf[i]! > 0).map(coord);
+    for (const [i, s] of formal.shelters.entries()) {
+      if (loadOf[i]! > 0 || shelterLoads.length >= 60) continue;
+      const c = coord(s);
+      if (loaded.some((l) => hav(c.lat, c.lon, l.lat, l.lon) <= E.alternateRangeKm)) shelterLoads.push({ shelterId: s.id, name: s.name, load: 0, capacity: s.capacity, lat: c.lat, lon: c.lon });
+    }
     plannedOverflow = sp.overflow * escaped;
     totalCapacity = sp.totalCapacity;
   }

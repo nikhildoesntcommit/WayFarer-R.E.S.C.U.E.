@@ -3,6 +3,10 @@ import { Home } from './Home';
 import { HelpPage } from './HelpPage';
 import { SettingsRoute } from './SettingsRoute';
 import { CameraCapture } from './scan/CameraCapture';
+import { ScanMenu } from './scan/ScanMenu';
+import { SizeScan } from './scan/SizeScan';
+import { WalkScan } from './scan/WalkScan';
+import { ArScan } from './scan/ArScan';
 import { CalibrateStage } from './scan/CalibrateStage';
 import { LayoutEditor } from './draw/LayoutEditor';
 import { DisasterSetup } from './map/DisasterSetup';
@@ -18,7 +22,11 @@ export function AppRoutes() {
       <Route path="/" element={<Home />} />
       <Route path="/help" element={<HelpPage />} />
       <Route path="/settings" element={<SettingsRoute />} />
-      <Route path="/scan" element={<CameraCapture />} />
+      <Route path="/scan" element={<ScanMenu />} />
+      <Route path="/scan/camera" element={<CameraCapture />} />
+      <Route path="/scan/ar" element={<ArScan />} />
+      <Route path="/scan/walk" element={<WalkScan />} />
+      <Route path="/scan/size" element={<SizeScan />} />
       <Route path="/calibrate" element={<CalibrateStage />} />
       <Route path="/draw" element={<LayoutEditor />} />
       <Route path="/map" element={<DisasterSetup />} />

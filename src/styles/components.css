@@ -333,3 +333,10 @@ table.data td.n { text-align: right; font-family: var(--font-mono); font-variant
 [data-touch='large'] .zoom-ctl .btn { width: 52px; min-width: 52px; height: 52px; }
 [data-touch='large'] .switch { width: 4rem; height: 2.2rem; }
 a.btn { text-decoration: none; display: inline-flex; align-items: center; justify-content: center; }
+
+/* ---- AR scan: the page is the WebXR DOM-overlay root; the camera image is drawn behind it ---- */
+.ar-root { background: transparent; }
+.ar-hud { position: fixed; inset: 0; pointer-events: none; }
+.ar-hud .ar-bar { position: absolute; left: 0; right: 0; bottom: 0; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); background: rgba(11, 18, 32, 0.82); color: #fff; pointer-events: auto; }
+.ar-reticle { position: absolute; left: 50%; top: 50%; width: 44px; height: 44px; margin: -22px 0 0 -22px; border: 3px solid #fff; border-radius: 50%; box-shadow: 0 0 0 2px rgba(11, 18, 32, 0.6); }
+.ar-reticle.on { border-color: var(--olive, #0B7A3B); background: rgba(11, 122, 59, 0.25); }

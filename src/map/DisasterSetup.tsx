@@ -152,7 +152,7 @@ export function DisasterSetup() {
               </button>
             ))}
           </div>
-          {data ? <p className="muted" style={{ fontSize: '0.85rem' }}>Data tier: <strong>{data.tier}</strong>. {data.notice}</p> : <p className="muted">Loading map data…</p>}
+          {!data ? <p className="muted">Loading map data…</p> : null}
         </div>
       ) : (
         <>
@@ -237,7 +237,6 @@ export function DisasterSetup() {
                     <ul style={{ margin: '4px 0', paddingLeft: '1.2em', fontSize: '0.88rem' }} data-testid="model-facts">{analysis.facts.map((f) => <li key={f}>{f}</li>)}</ul>
                   </details>
                 ) : null}
-                {data ? <p className="muted" style={{ margin: '0 0 6px', fontSize: '0.82rem' }}>Data tier: {data.tier}. Population is district-uniform and elevation is coarse; treat extents as indicative.</p> : null}
                 {overlay ? <div className="legend" aria-label="Legend"><span className="label">{overlay.legend.title}</span>{overlay.legend.items.map((i) => <span key={i.label}><i style={{ background: i.colour }} />{i.label}</span>)}</div> : null}
                 <p style={{ margin: '8px 0 0' }}>
                   <button className="btn primary" onClick={() => nav('/map-simulate')} data-testid="begin-sim">Begin evacuation simulation</button>

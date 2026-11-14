@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { headingDeg, HOLD_STILL_THRESHOLD, motionVariance } from './geometry';
+import { aimFromSamples, headingDeg, HOLD_STILL_THRESHOLD, motionVariance, type AimSample } from './geometry';
 
 export interface Orientation {
   beta: number;
@@ -23,6 +23,7 @@ type IOSPermission = { requestPermission?: () => Promise<'granted' | 'denied'> }
 export function useSensors() {
   const orient = useRef<Orientation>({ beta: 90, gamma: 0, alpha: 0, heading: 0, live: false, absolute: false });
   const accel = useRef<number[]>([]);
+  const history = useRef<AimSample[]>([]);
   const [motion, setMotion] = useState<MotionState>('idle');
   const [snapshot, setSnapshot] = useState({ live: false, still: true, absolute: false });
   const attached = useRef(false);
@@ -47,6 +48,9 @@ export function useSensors() {
         live: true,
         absolute: isAbs,
       };
+      const now = performance.now();
+      history.current.push({ t: now, beta: e.beta, heading: orient.current.heading });
+      while (history.current.length > 0 && now - history.current[0]!.t > 1000) history.current.shift();
     };
     window.addEventListener('deviceorientationabsolute', (e) => onOrient(e as DeviceOrientationEvent, true));
     window.addEventListener('deviceorientation', (e) => onOrient(e, false));
@@ -109,5 +113,8 @@ export function useSensors() {
     return () => window.clearInterval(id);
   }, []);
 
-  return { orient, motion, requestMotion, ...snapshot };
+  /** The aim over the last few hundred milliseconds (median), or null if no sensor reading arrived. */
+  const sampleAim = useCallback((windowMs?: number) => aimFromSamples(history.current, performance.now(), windowMs), []);
+
+  return { orient, motion, requestMotion, sampleAim, ...snapshot };
 }

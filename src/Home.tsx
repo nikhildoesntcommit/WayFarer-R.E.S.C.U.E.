@@ -3,7 +3,7 @@ import { APP } from './constants';
 import { useApp } from './store';
 
 const PATHS = [
-  { id: 'A', to: '/scan', cls: 'exit-a', title: 'Scan a room', text: 'One room, one hall, one floor. Uses your phone camera to build a floor plan.' },
+  { id: 'A', to: '/scan', cls: 'exit-a', title: 'Scan a room', text: 'One room, one hall, one floor. Walk around with AR, walk the walls, or type the size. Builds a floor plan from your phone.' },
   { id: 'B', to: '/draw', cls: 'exit-b', title: 'Draw a layout', text: 'A planned event or any space you design yourself. Draw the plan from scratch.' },
   { id: 'C', to: '/map', cls: 'exit-c', title: 'Use the map', text: 'A natural disaster. Pick an area of India, choose the disaster type, mark where it began.' },
 ] as const;
@@ -45,7 +45,6 @@ export function Home() {
             <p>{p.text}</p>
           </Link>
         ))}
-        <p className="muted" style={{ fontSize: '0.85rem' }}>{APP.disclaimer}</p>
       </main>
     </div>
   );

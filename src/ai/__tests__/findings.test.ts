@@ -3,7 +3,7 @@ import { makeRoomPlan } from '../../engine/__tests__/helpers';
 import type { MapScenario, Plan, SimulationResult } from '../../types';
 import { runMonteCarloSync } from '../../engine/pipeline';
 import { applyAction, evaluateWhatIf, overallStatus } from '../findings';
-import { acceptable } from '../llm';
+import { situationSummary } from '../summary';
 import { generateFindings } from '../rules';
 
 function baseResult(over: Partial<SimulationResult> = {}): SimulationResult {
@@ -85,8 +85,9 @@ describe('rule-based findings', () => {
       mapStats: {
         edgeFlowShare: [{ edgeId: 'e1', share: 0.7, label: 'NH-27 near Muzaffarpur' }],
         shelterLoads: [
-          { shelterId: 'a', name: 'Patna', load: 9000, capacity: 5000 },
-          { shelterId: 'b', name: 'Gaya', load: 500, capacity: 8000 },
+          { shelterId: 'a', name: 'Patna', load: 9000, capacity: 5000, lat: 25.6, lon: 85.1 },
+          { shelterId: 'b', name: 'Gaya', load: 500, capacity: 8000, lat: 24.8, lon: 85.0 },
+          { shelterId: 'far', name: 'Kalyan', load: 0, capacity: 90000, lat: 19.2, lon: 73.1 },
         ],
         unreachablePopulation: 0, floodTimingGapMin: 35, floodRegion: 'north Bihar',
       },
@@ -96,6 +97,9 @@ describe('rule-based findings', () => {
     expect(ids).toContain('shelter_overload_a');
     expect(ids).toContain('shelter_underused_b');
     expect(ids).toContain('flood_timing');
+    // a shelter 1,800 km away is never proposed as the alternative
+    const f = generateFindings(r, null, scenario).find((x) => x.id === 'shelter_overload_a')!;
+    expect(JSON.stringify(f)).not.toContain('Kalyan');
   });
 });
 
@@ -116,12 +120,21 @@ describe('what-if', () => {
   });
 });
 
-describe('LLM guard', () => {
-  it('rejects rewrites that drop or change a number', () => {
-    const orig = 'Exit A is carrying 72% of the crowd (216 of 300).';
-    expect(acceptable(orig, 'About 72% of people (216 out of 300) use Exit A.')).toBe(true);
-    expect(acceptable(orig, 'Most people use Exit A.')).toBe(false);
-    expect(acceptable(orig, 'About 70% of people (216 of 300) use Exit A.')).toBe(false);
+describe('situation summary', () => {
+  it('the summary is written from the run: a single dominant exit and a queue read differently from a balanced room', () => {
+    const balanced = situationSummary(baseResult(), [], null, null);
+    const skewed = situationSummary(baseResult({
+      exitUtilisation: { 'exit-A': 0.9, 'exit-B': 0.1 }, exitQueueTimes: { 'exit-A': 40, 'exit-B': 1 }, p95: 120,
+    }), [], null, null);
+    expect(balanced.headline).toContain('300');
+    expect(balanced.points.join(' ')).toContain('used fairly evenly');
+    expect(skewed.points.join(' ')).toMatch(/Queueing dominates/);
+    expect(skewed.points.join(' ')).toContain('90%');
+    expect(balanced.points.join(' ')).not.toEqual(skewed.points.join(' '));
+  });
+  it('a lost crowd is reported as lost, not as a success', () => {
+    const s = situationSummary(baseResult({ casualties: 200 * 20, evacuated: 200 * 280 }), [], null, null);
+    expect(s.headline).toMatch(/Not everyone/);
   });
 });
 

@@ -38,7 +38,7 @@ is listed here. Nothing below was changed silently.
 ## C2. V2 changes and the assumptions they add
 | # | Change | Why / what is assumed |
 |---|---|---|
-| V1 | Fire radius capped at 8 m (`fireMaxRadiusM` in `constants.ts`) | Uncapped 0.5 m/s growth swallowed whole rooms and distorted results. **This deviates from the written fire spec.** |
+| V1 | Fire is no longer a disc growing at 0.5 m/s. It is a t-squared design fire (alpha 0.0469 kW/s², fuel-limited at an assumed 5 MW), flames follow the burning area, and smoke spreads by Alpert's ceiling-jet speed through open space only (stops at walls, flows through doors). Smoke halves walking speed and harms by exposure time (dose rate falls with distance from the fire); people standing in smoke start to move after 5 s; people who are cut off keep accumulating dose. Constants are in `FIRE` (`constants.ts`). | The disc ignored walls and the 8 m cap was arbitrary. **This deviates from the written fire spec (§6.7).** Peak heat release, ceiling height and the dose times (60 s near the fire, 600 s at the thin edge) are ASSUMPTIONS, not calibrated; ISO 13571 gives the form, not these numbers |
 | V2 | Cyclone moves (heading, forward speed, warning time); earthquake is a finite fault; flood is rain-driven | The V1 point-source footprints were static and wrong in shape |
 | V3 | Plausibility refusals (flood rain vs climatology, quake Mmax vs seismic zone, cyclone must start at sea) | A Thar flood or a M8.5 in Pune is not a scenario. Climatology and zone boxes are hand-compiled and coarse |
 | V4 | Only ordered or trapped people evacuate; the rest shelter in place. Shares in `orders.ts` (cyclone 100 % in surge, 50/25/8 % by wind; flood 100/60/20 % by depth; quake 70/35/10/2 % by MMI) | V1 evacuated the whole footprint (tens of millions) and drowned every shelter. **Shares are assumptions**, scaled to Fani 2019 (about 1.2 M moved of about 15 M exposed); they are not calibrated |
@@ -47,12 +47,19 @@ is listed here. Nothing below was changed silently.
 | V7 | Accessibility settings (text scale, high contrast, colour-blind palette, reduced motion, large targets), Help, example plan | Requested. Settings stay on the device (localStorage) |
 | V8 | GitHub Pages build: base path, 404 fallback, `.nojekyll`, Actions workflow | Only the GitHub variant was built; iOS and Mac packaging were deliberately skipped |
 
-Caveat that matters: the "last person out" time (P95/max) is dominated by the lognormal pre-movement tail, not by roads or shelters. Cut the warning delay and the numbers collapse; that sensitivity is real and is shown (36 h of warning gave zero casualties in the cyclone test).
+## C3. V3 changes
+| # | Change | Why / what is assumed |
+|---|---|---|
+| W1 | Companion groups (70 % in groups; sizes 1/2/3/4 = 30/40/20/10 %; 5 s gather time) | Independent individuals are unrealistic. The 70 % is Moussaïd 2010; the split of sizes and the gather time are ASSUMED |
+| W2 | Shelter planning radius 4 h (was 10 h); beds only within range, otherwise "unhoused" (not piled on the nearest shelter); alternates proposed only within 120 km | V2 produced 2,754 % loads and redirects to another state |
+| W3 | Map path calls the count "caught on the way", not casualties; default cyclone warning 24 h | The count is exposure on a road, not deaths; IMD warns about 24-48 h ahead |
+| W4 | AI, in two parts. (a) A small neural network (11→32→32→3) trained on 1,672 random rooms run through this app's own simulator; it gives an instant estimate while marking and a cross-check on results. (b) The optional on-device language model returns, now only re-wording a deterministic, situation-specific summary, behind a number check | (a) is the part that is truly tuned to the app, but it learns the simulator, not reality; held-out error about 12 % on P95 (84 % of rooms within 20 %), only modestly better than a linear fit (14 %), partly because targets come from 40 simulated trials. Trained range is rooms up to about 1,400 people; larger crowds are flagged out of range. (b) is a general small model (Qwen2.5-0.5B), NOT fine-tuned; untested here because no WebGPU was available |
+| W5 | Camera: crosshair aim (lens independent), median over 0.4 s, ± per corner; AR requests depth sensing and averages hits | The "hold still" gate was too strict; depth cannot be tested without hardware |
+ the "last person out" time (P95/max) is dominated by the lognormal pre-movement tail, not by roads or shelters. Cut the warning delay and the numbers collapse; that sensitivity is real and is shown (36 h of warning gave zero casualties in the cyclone test).
 
 ## D. Not verified
 * Real phone camera + gyroscope (Android and iOS). Only a synthetic camera stream and emulated orientation events in Chromium.
 * A live HTTPS deployment.
-* Real WebGPU WebLLM inference. Rules-only findings are what was tested end to end.
 * Firefox and Safari.
 * Any calibration of the evacuation model against real events.
 * The live GitHub Pages deployment (workflow and base path only tested locally).
@@ -61,4 +68,4 @@ Caveat that matters: the "last person out" time (P95/max) is dominated by the lo
 * Exhibition title and sub-theme cannot be changed after registration (closes 14 Nov 2026); confirm them before then.
 
 ## E. Verified
-96 unit tests (engine, findings, camera geometry, disasters, evidence, demo plan), type-check, ESLint, and Playwright in Chromium: draw → simulate → results; map earthquake M7 at Delhi → population > 0 → simulate → results; scan without a camera shows an error and "Use draw mode"; offline reload including the map; what-if; report JSON and print-to-PDF; phone-width layout without horizontal overflow; V2: Thar flood refused, Patna rain flood, moving cyclone with replay clock, inland cyclone refused, no great quake on the peninsula, settings persistence, Help authors, example plan. Build verified both at `/` and at a `/wayfarer-rescue/` base.
+119 unit tests (V3) (engine, findings, camera geometry, disasters, evidence, demo plan), type-check, ESLint, and Playwright in Chromium: draw → simulate → results; map earthquake M7 at Delhi → population > 0 → simulate → results; scan without a camera shows an error and "Use draw mode"; offline reload including the map; what-if; report JSON and print-to-PDF; phone-width layout without horizontal overflow; V2: Thar flood refused, Patna rain flood, moving cyclone with replay clock, inland cyclone refused, no great quake on the peninsula, settings persistence, Help authors, example plan. Build verified both at `/` and at a `/wayfarer-rescue/` base.

@@ -31,9 +31,11 @@ function Project() {
         <li><strong>Walking speed falls as a crowd thickens.</strong> Each person’s speed follows the Weidmann (1993) speed–density relationship, so a packed corridor is slow and an empty one is fast.</li>
         <li><strong>Doors have a hard limit.</strong> Flow through a door is capped at about 1.3 people per second for every metre of usable width (SFPE), after subtracting the space people keep clear of the frame.</li>
         <li><strong>Shortest routes by a wave.</strong> A first-order fast-marching solver of the eikonal equation spreads a “wavefront” out from every exit across the floor plan, giving each point its true walking time to the nearest way out around walls.</li>
-        <li><strong>People choose, and choose imperfectly.</strong> Each person estimates the time to every exit, including the queue they can see, with a small perception error, and may switch exit once or twice. A fire adds a penalty near the flames so people avoid it.</li>
+        <li><strong>People choose, and choose imperfectly.</strong> Each person estimates the time to every exit, including the queue they can see, with a small perception error, and may switch exit once or twice. About 70 % walk with companions (pairs, families), who start together and move at the pace of the slowest. A fire grows like a real design fire; its smoke spreads through the open space (not through walls), slows people, and harms those who stay in it, while routes bend away from it.</li>
         <li><strong>{MONTE_CARLO.defaultRuns} randomised trials.</strong> Starting positions, reaction delays, walking speeds and perception errors are drawn at random in every trial (Monte Carlo). The app reports the median (P50) and the 95th-percentile (P95) evacuation time with confidence intervals, not a single hopeful number.</li>
         <li><strong>Fair what-if tests.</strong> A proposed change is re-run with the same random numbers (common random numbers), so a difference in the result is caused by the change and not by luck.</li>
+        <li><strong>A small neural network, trained on this app’s own simulator.</strong> Thousands of random rooms were run through the full simulation, and a compact network (11 inputs, two layers of 32) learned to predict the evacuation time and the share of people lost from the room’s physical features: crowd size, walking times to the exits, door capacity, alarm delay, fire distance, vulnerable share. It gives an instant estimate while you mark the plan and a cross-check on the results page. It learns the simulator, not reality, and it says so when a room is outside what it was trained on.</li>
+        <li><strong>An optional on-device language model.</strong> If the browser supports WebGPU, the results page can offer a plain-language wording of the summary. The model (about 0.4 GB, downloaded once on request) is a small general model, not fine-tuned, held to the facts by its instructions and by a check that rejects any wording that changes a number.</li>
         <li><strong>A conservation check.</strong> After every run, people out + casualties + still inside must equal the number who started. If not, the app says so.</li>
       </ul>
       <h2>Where the district-scale models come from</h2>
@@ -63,12 +65,14 @@ function Guide() {
 
       <h2>1 · Describe the space</h2>
       <h3>Scan a room (phone)</h3>
+      <p>Four ways, from best to simplest. All of them end in the same plan, which you can correct afterwards.</p>
       <ol>
-        <li>Allow the camera and, if asked, the motion sensors. Enter the height at which you hold the phone (0.5–2.5 m).</li>
-        <li>Stand at a corner, aim the cross-hair where the wall meets the floor and tap to place the corner. Repeat around the room, then press <em>Done</em>.</li>
-        <li>On the next screen, tap two points whose real distance you know (a door is about 0.9 m) to set the true scale, or skip if the scale already looks right.</li>
-        <li>No camera or motion sensor? Choose <em>Place corners by hand</em>, or use <em>Draw a layout</em>.</li>
+        <li><strong>AR scan (Android, Chrome):</strong> press Start, move the phone slowly until the circle turns green, walk to each corner and tap <em>Place corner</em>. It works in large rooms because the phone tracks its own movement. iPhones do not allow this in a web page.</li>
+        <li><strong>Walk along the walls (any phone):</strong> hold the phone flat, stand in a corner, press <em>Start here</em>, walk along each wall tapping <em>Corner</em>, then return to the start and press <em>Finish</em>. Steps are counted for distance. Press <em>Measure it</em> once to teach it your step length.</li>
+        <li><strong>Type the size:</strong> a rectangle or an L-shape from its measurements. Exact and instant.</li>
+        <li><strong>Aim from one spot:</strong> enter your phone height, aim at each floor corner and tap. Every corner must be visible from where you stand.</li>
       </ol>
+      <p>After scanning you may set the true scale by tapping two points whose real distance you know (a door is about 0.9 m), or skip it if the size already looks right.</p>
       <h3>Draw a layout</h3>
       <ol>
         <li><em>Wall</em>: drag to draw one, or tap points to chain walls; tap the last point again to stop. Draw the <strong>outer shell first</strong> and close it.</li>
@@ -135,6 +139,12 @@ function Build() {
         <dt>Model</dt><dd>{APP.modelVersion}</dd>
         <dt>Works offline</dt><dd>Yes, after the first load. Plans are stored on this device only.</dd>
       </dl>
+      <h2>Data and assumptions</h2>
+      <ul>
+        <li><strong>Map data tier: fallback.</strong> Census 2011 district population (spread evenly over each district), elevation at about 18 km, a skeleton of major roads, and towns of 50,000+ as shelters. Flood and surge extents, shelter loads and road bottlenecks are indicative.</li>
+        <li><strong>Assumed, not measured:</strong> shelter capacity (10 % of a town’s population), the share of people ordered to leave, the smoke dose times, group sizes and how long companions wait for each other. Behaviour is not yet calibrated against recorded drills.</li>
+        <li><strong>“Caught on the way”</strong> on the map path means exposed to the hazard on a road when it arrived. It is not a death count.</li>
+      </ul>
       <p className="callout">{APP.disclaimer}</p>
     </div>
   );

@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { describeEvidence } from '../ai/evidence';
 import { describeAction } from '../ai/findings';
-import { llmSupported, polishFinding } from '../ai/llm';
 import type { Finding, FindingAction, Plan } from '../types';
 
 type Filter = 'all' | Finding['severity'];
@@ -9,27 +8,6 @@ type Filter = 'all' | Finding['severity'];
 export function FindingsPanel({ findings, plan, runs, onTry }: { findings: Finding[]; plan: Plan | null; runs?: number; onTry: (f: Finding, a: FindingAction) => void }) {
   const [filter, setFilter] = useState<Filter>('all');
   const [open, setOpen] = useState<Record<string, boolean>>({});
-  const [polished, setPolished] = useState<Record<string, string>>({});
-  const [polishing, setPolishing] = useState(false);
-
-  // optional on-device rewrite (WebLLM). Silent on any failure: the template text stays.
-  useEffect(() => {
-    if (!llmSupported() || findings.length === 0) return;
-    let alive = true;
-    setPolishing(true);
-    (async () => {
-      for (const f of findings) {
-        if (!alive) return;
-        const t = await polishFinding(f);
-        if (!alive) return;
-        if (t) setPolished((p) => ({ ...p, [f.id]: t }));
-        else break; // timed out or unsupported: stop trying for this batch
-      }
-    })().finally(() => alive && setPolishing(false));
-    return () => {
-      alive = false;
-    };
-  }, [findings]);
 
   const shown = useMemo(() => (filter === 'all' ? findings : findings.filter((f) => f.severity === filter)), [findings, filter]);
   const count = (s: Filter) => (s === 'all' ? findings.length : findings.filter((f) => f.severity === s).length);
@@ -38,7 +16,6 @@ export function FindingsPanel({ findings, plan, runs, onTry }: { findings: Findi
     <section aria-label="Findings">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
         <h2>Findings</h2>
-        {polishing ? <span className="muted" style={{ fontSize: '0.8rem' }}>polishing wording on this device…</span> : null}
       </div>
       <div className="filters" role="group" aria-label="Filter findings">
         {(['all', 'critical', 'warning', 'note'] as const).map((f) => (
@@ -51,7 +28,7 @@ export function FindingsPanel({ findings, plan, runs, onTry }: { findings: Findi
       {shown.map((f) => (
         <article key={f.id} className={`finding ${f.severity}`} data-testid="finding">
           <div className="label">{f.severity} · {f.category.replace(/_/g, ' ')}</div>
-          <p style={{ margin: '4px 0 0' }}>{polished[f.id] ?? f.message}</p>
+          <p style={{ margin: '4px 0 0' }}>{f.message}</p>
           <div className="rec"><strong>Recommendation.</strong> {f.recommendation}</div>
           {f.predictedImprovementSeconds !== undefined ? (
             <div className="muted num" style={{ fontSize: '0.82rem' }}>Rule-of-thumb estimate: about {Math.round(f.predictedImprovementSeconds)} s faster (verify with “Try this”).</div>

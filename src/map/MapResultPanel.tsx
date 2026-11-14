@@ -42,13 +42,13 @@ export function MapResultPanel({ result }: { result: SimulationResult }) {
       {overlay ? <div className="legend" style={{ marginTop: 6 }}><span className="label">{overlay.legend.title}</span>{overlay.legend.items.map((i) => <span key={i.label}><i style={{ background: i.colour }} />{i.label}</span>)}</div> : null}
       <p className="muted" style={{ fontSize: '0.82rem' }}>
         {analysis && analysis.evacPopulation !== undefined ? <><strong>{fmt(analysis.totalPopulation)}</strong> people live in the affected area; <strong>{fmt(analysis.evacPopulation)}</strong> are ordered or forced to leave and the other {fmt(analysis.totalPopulation - analysis.evacPopulation)} are assumed to shelter in place. </> : null}
-        Times are hours after the alert. P95 is the time the last evacuee of a trial gets out of the danger zone; people caught by the hazard on the way are “casualties”, and those who had not got out by the 72 h cap are “still inside”. Beds are planned afterwards: each evacuee is assigned to the nearest shelter that still has room, within about {Math.round(MAP.evac.maxShelterTravelS / 3600)} h of driving.
+        Times are hours after the alert. P95 is the time the last evacuee of a trial gets out of the danger zone; people caught by the hazard on the way are counted as “caught on the way” (exposed to the hazard on the road; this is not a death count), and those who had not got out by the 72 h cap are “still inside”. Beds are planned afterwards: each evacuee is assigned to the nearest shelter that still has room, within about {Math.round(MAP.evac.maxShelterTravelS / 3600)} h of driving.
         {ms.unreachablePopulation > 0 ? <> {fmt(ms.unreachablePopulation)} people in the area have no road route and are not part of the 200 trials.</> : null}
       </p>
-      {ms.totalShelterCapacity !== undefined ? <p className="muted" style={{ fontSize: '0.82rem' }}>Assumed capacity of all shelters outside the hazard: {fmt(ms.totalShelterCapacity)}.{(ms.plannedOverflow ?? 0) > 0 ? <> About <strong>{fmt(ms.plannedOverflow ?? 0)}</strong> evacuees found no shelter with room within range and are shown against their nearest one, over its capacity.</> : null}</p> : null}
+      {ms.totalShelterCapacity !== undefined ? <p className="muted" style={{ fontSize: '0.82rem' }}>Shelter capacity outside the hazard: {fmt(ms.totalShelterCapacity)}.{(ms.plannedOverflow ?? 0) > 0 ? <> About <strong>{fmt(ms.plannedOverflow ?? 0)}</strong> evacuees reach safety but find no shelter bed within range; they are not counted against any shelter below.</> : null}</p> : null}
       <h3 style={{ marginTop: 10 }}>Shelters used</h3>
       <table className="data">
-        <thead><tr><th>Shelter</th><th className="n">People (mean)</th><th className="n">Assumed capacity</th><th className="n">Share of capacity</th></tr></thead>
+        <thead><tr><th>Shelter</th><th className="n">People (mean)</th><th className="n">Capacity</th><th className="n">Share of capacity</th></tr></thead>
         <tbody>
           {ms.shelterLoads.filter((s) => s.load > 0).sort((a, b) => b.load - a.load).slice(0, 10).map((s) => (
             <tr key={s.shelterId}>

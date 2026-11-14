@@ -68,8 +68,6 @@ export const SIM = {
   dtS: 0.1, // s, time step (spec §6.5)
   maxTimeS: 1200, // s, safety cap (spec §6.5)
   minSpeedMS: 0.05, // m/s, soft floor prevents numerical deadlock (spec §6.5)
-  fireGrowthMS: 0.5, // m/s, fire_origin radius growth (spec §6.7)
-  fireMaxRadiusM: 8, // m, V2: a fire is bounded by its fuel and compartment; it does not grow until it has swallowed the whole building
   fireAvoidBandM: 4, // m beyond the fire front within which routes are penalised (heat, smoke, panic)
   fireMinSpeedFactor: 0.2, // effective speed factor for routing right at the fire front (1 at the edge of the band)
   fireTickS: 1, // s, how often the routing fields are recomputed while a fire grows
@@ -85,6 +83,29 @@ export const SIM = {
   fireMaxEpochs: 40, // routing-field recomputations allowed per growing fire
   doorEndToleranceCells: 0.25, // fraction of a cell the door opening may overhang the door ends
   doorBandCells: 1.0, // cells either side of a wall centre-line that a door clears
+} as const;
+
+/**
+ * Fire and smoke (V3). Published relations, with assumptions marked.
+ * - Heat release follows a t-squared design fire, Q = alpha t^2 (NFPA 72 / SFPE; 0.0469 kW/s^2 is "fast"), until the fuel limits it.
+ * - The flaming area is Q divided by the heat release per unit area of burning furnishings.
+ * - Smoke is carried by the ceiling jet: radial speed u = 0.195 Q^(1/3) H^(1/2) / r^(5/6) (Alpert 1972). The front is
+ *   followed along walkable space, so it stops at walls and flows through open doors.
+ * - Smoke slows walking (Jin 1978: roughly half speed in dense smoke) and harms by exposure time, like a fractional
+ *   effective dose (ISO 13571): the dose rate is high next to the fire and falls with distance. ASSUMED values below.
+ */
+export const FIRE = {
+  alphaKWs2: 0.0469,
+  peakKW: 5000, // ASSUMED: fuel-limited peak heat release of a room fire
+  hrrpuaKWm2: 500, // heat release per unit burning area of furnishings
+  ceilingHeightM: 3.0, // ASSUMED
+  smokeSpeedFactor: 0.5, // walking speed multiplier inside smoke
+  doseNearS: 60, // ASSUMED: seconds of exposure to incapacitate right at the fire
+  doseFarS: 600, // ASSUMED: seconds of exposure to incapacitate at the thin edge of the smoke
+  doseDecayM: 6, // m, how quickly the dose rate falls with distance from the fire
+  cueDelayS: 5, // people who are standing in smoke stop waiting and start moving after this
+  stepS: 0.5, // s, resolution of the front-tracking table
+  maxSmokeTimeS: 900, // s, smoke is followed for at most this long
 } as const;
 
 export const FINDINGS = {
@@ -139,7 +160,7 @@ export const MAP = {
     surgeRadiusFactor: 2.0, // (V1) multiple of Rmax
     // ---- V2: moving storm ----
     translationKmhDefault: 20, // IMD: Bay of Bengal and Arabian Sea cyclones typically move 10-25 km/h
-    leadHoursDefault: 12, // warning time between the alert and landfall
+    leadHoursDefault: 24, // warning time between the alert and landfall (IMD issues a cyclone alert about 48 h and a warning about 24 h ahead; V2 used 12 h)
     galeWindMS: 20, // m/s: travel is unsafe from here (IMD gale >= 17.5 m/s; 20 m/s allows for gusts)
     decay: { vb: 13.7, alphaPerHour: 0.095, landfallReduction: 0.9 }, // Kaplan & DeMaria (1995), V_b = 26.7 kt
     surgePeakM: [1.4, 2.1, 3.2, 4.7, 6.0], // peak coastal surge by category: mid-points of the Saffir-Simpson ranges
@@ -157,7 +178,7 @@ export const MAP = {
     shelterIntakeCapacityFractionPerHour: 0.25, // ...or this fraction of its nominal capacity per hour, whichever is larger
   },
   evac: {
-    maxShelterTravelS: 10 * 3600, // V2: people are not sent to a shelter more than ~10 h of driving away while nearer ones are full (assumption)
+    maxShelterTravelS: 4 * 3600, // V3: beds are planned within ~4 h of driving (assumption; V2 used 10 h and sent people across states)
     preMovementMedianS: 1800, // s, warning-to-departure at regional scale (the building value of 41 s is not applicable)
     preMovementSigma: 0.7,
     nodeJitterSigma: 0.25, // per-node, per-trial multiplicative departure noise
@@ -168,7 +189,17 @@ export const MAP = {
     eventBudgetPerTrial: 60_000, // cohort-edge events per trial; the number of cohorts per node adapts to stay below it
     maxCohortsPerNode: 8,
     maxShelterRangeKm: 600,
+    alternateRangeKm: 120, // a shelter is only proposed as an alternative to an overloaded one if it is this close
   },
+} as const;
+
+/** Group behaviour. About 70 % of pedestrians move in groups, mostly pairs (Moussaïd, Perozo, Garnier, Helbing, Theraulaz 2010). The split below is that finding rounded; the gather time is ASSUMED. */
+export const GROUPS = {
+  size1: 0.3,
+  size2: 0.4,
+  size3: 0.2, // size 4 takes the remaining 0.1
+  gatherS: 5, // s, extra time for companions to find each other before leaving
+  spreadM: 1.0, // m, how far apart companions start
 } as const;
 
 export const CONTOUR = {
@@ -179,8 +210,8 @@ export const CONTOUR = {
 
 export const APP = {
   name: 'WayFarer R.E.S.C.U.E.',
-  version: '2.0.0',
-  modelVersion: 'wayfarer-engine-2.0 (Weidmann 1993 / SFPE / first-order FMM / queue-aware exit choice)',
+  version: '3.0.0',
+  modelVersion: 'wayfarer-engine-3.0 (Weidmann 1993 / SFPE / first-order FMM / queue-aware exit choice)',
   disclaimer: 'A planning tool, not a certified safety assessment.',
   exhibition: {
     theme: 'STEM for Science, Technology, and Innovation for a Sustainable and Vikshit Bharat',
@@ -191,10 +222,3 @@ export const APP = {
   },
 } as const;
 
-export const LLM = {
-  modelId: 'Phi-3-mini-4k-instruct-q4f16_1-MLC', // @mlc-ai/web-llm prebuilt model id
-  loadTimeoutMs: 10_000, // spec §10.3: give up on the polish step after 10 s and keep the template text
-  minDeviceMemoryGB: 4,
-  maxTokens: 120,
-  temperature: 0.2,
-} as const;

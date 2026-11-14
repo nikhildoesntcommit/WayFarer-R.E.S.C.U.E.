@@ -4,6 +4,7 @@ import { DEFAULT_MIX, DistanceDialog, DoorDialog, PeopleDialog, TimeDialog } fro
 import { PlanCanvas, type Gfx, type PlanCanvasHandle } from './PlanCanvas';
 import { COLOURS, label as drawLabel, polyPath, renderPlan, scaleBar } from '../draw/render';
 import { emptyPlan, newCluster, newHotspot, nearestSegment, placeDoor, rebuildPlan, scalePlan, uid } from '../draw/tools';
+import { estimatePlan, type Estimate } from '../ai/surrogate';
 import { checkNewArea } from '../marking/areas';
 import { validatePlan } from '../marking/validation';
 import { isFinalExitDoor } from '../utils/exits';
@@ -93,6 +94,15 @@ function hitTest(plan: Plan, w: WorldPoint, tol: number, walls: boolean, people 
 export function PlanEditor({ mode }: { mode: EditorMode }) {
   const nav = useNavigate();
   const plan = useApp((s) => s.plan);
+  // instant estimate from the trained network, recomputed shortly after the plan stops changing
+  const [quick, setQuick] = useState<Estimate | null>(null);
+  useEffect(() => {
+    if (!plan) return;
+    const id = window.setTimeout(() => {
+      try { setQuick(estimatePlan(plan)); } catch { setQuick(null); }
+    }, 600);
+    return () => window.clearTimeout(id);
+  }, [plan]);
   const hydrated = useApp((s) => s.hydrated);
   const setPlan = useApp((s) => s.setPlan);
   const setSource = useApp((s) => s.setSource);
@@ -734,6 +744,11 @@ export function PlanEditor({ mode }: { mode: EditorMode }) {
                   <span className={c.ok ? 'ok' : c.blocking ? 'danger' : 'warn-text'}>{c.ok ? '✓' : c.blocking ? '✗' : '!'}</span> {c.label}
                 </span>
               ))}
+              {nextOk && quick ? (
+                <span className="muted" data-testid="quick-estimate" title="A small neural network trained on simulated rooms; the full simulation is more precise.">
+                  Quick estimate: last person out in about {fmtEst(quick.p95)} (likely {fmtEst(quick.p95Low)}–{fmtEst(quick.p95High)}){quick.outOfRange.length > 0 ? ' · outside the model’s training range, treat with caution' : ''}
+                </span>
+              ) : null}
               {!nextOk ? (
                 <span className="muted">
                   {validation.checks.find((c) => c.blocking && !c.ok)?.detail}
@@ -749,3 +764,5 @@ export function PlanEditor({ mode }: { mode: EditorMode }) {
     </div>
   );
 }
+
+const fmtEst = (s: number) => (s >= 120 ? `${(s / 60).toFixed(1)} min` : `${Math.round(s)} s`);

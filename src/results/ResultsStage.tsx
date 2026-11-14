@@ -5,6 +5,7 @@ import { FindingsPanel } from './FindingsPanel';
 import { NumbersPanel } from './NumbersPanel';
 import { WhatIfPanel } from './WhatIfPanel';
 import { MapResultPanel } from '../map/MapResultPanel';
+import { SummaryCard } from './SummaryCard';
 import { useApp } from '../store';
 import type { Finding, FindingAction } from '../types';
 
@@ -33,6 +34,7 @@ export function ResultsStage({ whatIfOpen = false }: { whatIfOpen?: boolean }) {
       </header>
       <div className="results">
         <div>
+          <SummaryCard result={result} findings={findings} plan={plan} scenario={scenario} />
           <NumbersPanel plan={plan} result={result} findings={findings} />
           {isMap ? <MapResultPanel result={result} /> : plan ? (
             <div className="panel">

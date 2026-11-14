@@ -239,7 +239,7 @@ export interface MapAnalysis {
 
 export interface MapSimStats {
   edgeFlowShare: { edgeId: string; share: number; label: string }[];
-  shelterLoads: { shelterId: string; name: string; load: number; capacity: number }[];
+  shelterLoads: { shelterId: string; name: string; load: number; capacity: number; lat?: number; lon?: number }[];
   unreachablePopulation: number;
   /** evacuees for whom no shelter had spare capacity (they are sent to their nearest shelter regardless) */
   plannedOverflow?: number;

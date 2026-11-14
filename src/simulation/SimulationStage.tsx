@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { generateFindings } from '../ai/findings';
 import { Num } from '../components/Modal';
@@ -9,7 +9,9 @@ import type { TraceFrame } from '../engine/agents';
 import { startMonteCarlo, type SimulationError } from '../engine/montecarlo';
 import type { ProgressInfo } from '../engine/pipeline';
 import { useApp } from '../store';
-import { countOut, drawTraceFrame } from './visualiser';
+import { countOut, drawFire, drawTraceFrame } from './visualiser';
+import { buildFires } from '../engine/hazards';
+import { rasterize } from '../engine/grid';
 
 const PLAYBACK_X = 8; // preview plays at 8x real time
 
@@ -97,9 +99,20 @@ export function SimulationStage() {
     if (done && !trace.current) nav('/results');
   }, [done, nav]);
 
+  const fireLayer = useMemo(() => {
+    if (!plan || !plan.hazards.some((h) => h.kind === 'fire_origin')) return null;
+    try {
+      const grid = rasterize(plan);
+      return { grid, fires: buildFires(plan, grid) };
+    } catch {
+      return null;
+    }
+  }, [plan]);
+
   const paint = (g: Gfx) => {
     renderPlan(g, plan, { clusters: false, labels: false });
     const tr = trace.current;
+    if (fireLayer) drawFire(g, fireLayer.grid, fireLayer.fires, tr?.[frameIdx.current]?.t ?? 0);
     drawTraceFrame(g, tr?.[frameIdx.current]);
     scaleBar(g);
   };

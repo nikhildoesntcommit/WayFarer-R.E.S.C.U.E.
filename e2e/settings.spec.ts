@@ -31,3 +31,15 @@ test('example plan loads from settings and can be simulated', async ({ page }) =
   await expect(page).toHaveURL(/\/mark$/);
   await expect(page.getByTestId('plan-canvas')).toBeVisible();
 });
+
+test('the trained estimator gives an instant estimate while marking and a cross-check on the results', async ({ page }) => {
+  await page.goto('/settings');
+  await page.getByTestId('load-demo').click();
+  await expect(page.getByTestId('quick-estimate')).toContainText(/Quick estimate: last person out in about/, { timeout: 15000 });
+  await page.goto('/simulate');
+  await page.waitForURL('**/results', { timeout: 120000 });
+  await expect(page.getByTestId('summary')).toContainText('What happened');
+  await expect(page.getByTestId('estimate-check')).toContainText(/neural network/i);
+  // headless Chromium has no WebGPU: the optional language-model button must not be offered
+  await expect(page.getByTestId('narrate')).toHaveCount(0);
+});

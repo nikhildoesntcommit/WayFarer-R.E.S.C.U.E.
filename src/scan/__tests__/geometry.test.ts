@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AimError, computeCornerPosition, headingDeg, motionVariance, tapToVideoPixels } from '../geometry';
+import { aimFromSamples, aimUncertaintyM, AimError, angleDiffDeg, computeCornerPosition, headingDeg, median, motionVariance, tapToVideoPixels } from '../geometry';
 
 const base = { phoneHeightM: 1.4, videoWidth: 1080, videoHeight: 1920 };
 
@@ -55,5 +55,43 @@ describe('tap mapping and stillness', () => {
   it('variance is zero for a still phone and large for a shaken one', () => {
     expect(motionVariance([9.81, 9.81, 9.81, 9.81, 9.81])).toBeCloseTo(0, 9);
     expect(motionVariance([9, 11, 8, 12, 9.5, 10.5])).toBeGreaterThan(0.6);
+  });
+});
+
+describe('aim averaging and honest uncertainty', () => {
+  it('the median ignores a single wild reading', () => {
+    expect(median([10, 10.2, 9.9, 10.1, 25])).toBeCloseTo(10.1, 5);
+  });
+  it('compass angles are compared around north: 359° and 1° are 2° apart', () => {
+    expect(angleDiffDeg(1, 359)).toBe(2);
+    expect(angleDiffDeg(359, 1)).toBe(-2);
+  });
+  it('a steady aim near north averages to north, not to 180°', () => {
+    const t0 = 1000;
+    const s = [359.6, 0.3, 359.8, 0.1, 0.0].map((h, i) => ({ t: t0 + i * 50, beta: 45 + (i % 2) * 0.1, heading: h }));
+    const a = aimFromSamples(s, t0 + 250)!;
+    expect(Math.min(a.heading, 360 - a.heading)).toBeLessThan(0.5);
+    expect(a.spreadDeg).toBeLessThan(1);
+  });
+  it('an aim that swings widely reports a large spread; old samples are ignored', () => {
+    const s = [{ t: 0, beta: 10, heading: 0 }, { t: 900, beta: 40, heading: 0 }, { t: 950, beta: 50, heading: 0 }, { t: 1000, beta: 60, heading: 0 }];
+    const a = aimFromSamples(s, 1000)!;
+    expect(a.n).toBe(3);
+    expect(a.spreadDeg).toBeGreaterThan(3);
+    expect(aimFromSamples([], 0)).toBeNull();
+    // events only on change: a long-still phone keeps its last reading
+    expect(aimFromSamples([{ t: 0, beta: 50, heading: 10 }], 5000)!.spreadDeg).toBe(0);
+  });
+  it('error grows with the square of the distance and is a few centimetres up close', () => {
+    const near = aimUncertaintyM(1.4, 1.4, 0.5);
+    const far = aimUncertaintyM(6, 1.4, 0.5);
+    expect(near).toBeLessThan(0.03);
+    expect(far / near).toBeGreaterThan(8);
+  });
+  it('the picture centre is lens-independent: a different field of view gives the same point', () => {
+    const o = { phoneHeightM: 1.4, videoWidth: 1080, videoHeight: 1920, beta: 55, headingDeg: 30, tapX: 540, tapY: 960 };
+    const a = computeCornerPosition({ ...o, fovDeg: 50 });
+    const b = computeCornerPosition({ ...o, fovDeg: 95 });
+    expect(a.distanceM).toBeCloseTo(b.distanceM, 9);
   });
 });
